@@ -1,116 +1,111 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include <time.h>
+#include <string.h>
+#include <curl/curl.h>
+#include <ctype.h>
 
-#define NUM_PAWNS 5
-#define NUM_COLORS 8
-#define NUM_ATTEMPTS 10
+#define MAX_WORD_LENGTH 10
 
-typedef enum {RED, GREEN, BLUE, YELLOW, BLACK, WHITE, GRAY, PURPLE} color_t;
+typedef struct TrieNode {
+    struct TrieNode *children[26];
+    int is_end_of_word;
+} TrieNode;
 
-  void read_proposed_combinations(color_t board[NUM_PAWNS])
-  {
-   for(int i=0;i<NUM_PAWNS;i++)
-   {
-     printf("Enter the number of the color %d (0-%d) : ", i + 1, NUM_COLORS );
-        scanf("%d", &board[i]);
-        board[i]=(color_t)board[i];
-    if (board[i] < 0 || board[i] >= NUM_COLORS) {
-            printf("Invalid color. Try again.\n");
-            i--;
-        }
-   }
-  }
-  void evaluate_proposed_combinations(color_t color_hidden[NUM_PAWNS],color_t color_proposed[NUM_PAWNS],
-     int *well_placed_pawn,int *misplaced_pawn)
-  {
-   *well_placed_pawn=0;
-   *misplaced_pawn=0;
-   for(int i=0;i<NUM_PAWNS;i++)
-   {
-    if (color_hidden[i]==color_proposed[i])
-    {
-     (*well_placed_pawn)++;
-      color_hidden[i]= -1;
-      color_proposed[i]= -1;
+TrieNode* create_node() {
+    TrieNode *node = (TrieNode*) malloc(sizeof(TrieNode));
+    node->is_end_of_word = 0;
+    for (int i = 0; i < 26; i++) {
+        node->children[i] = NULL;
     }
-   }
-   for(int i=0;i<NUM_PAWNS;i++)
-   {
-    if (color_proposed== -1)
-    {
-      continue;
-    }
-    for(int j=0;j<NUM_PAWNS;j++)
-    {
-     if (color_hidden[j]==color_proposed[i])
-     {
-       (*misplaced_pawn)++;
-       color_hidden[j]=-1;
-       color_proposed[i]=-1;
-       break;
-     }
-    }
-   }
-
-  }
-
-     void generate_hidden_combination(color_t color_hidden[NUM_PAWNS]);
-
-     void read_proposed_combinations(color_t board[NUM_PAWNS]);
-
-
-     void evaluate_proposed_combinations(color_t color_hidden[NUM_PAWNS],color_t color_proposed[NUM_PAWNS],
-     int *well_placed_pawn,int *misplaced_pawn);
-
-
-    void generate_hidden_combination(color_t color_hidden[NUM_PAWNS]) {
-    color_t colors[NUM_COLORS];
-    for (int i = 0; i < NUM_COLORS; ++i) {
-        colors[i] = i;
-    }
-
-     srand(time(NULL));
-
-      for(int i=0;i<NUM_PAWNS;i++)
-      {
-       int j=rand()%(NUM_COLORS-i);
-       int temp=colors[i];
-       colors[i]=colors[j];
-       colors[j]=temp;
-      }
-       for(int i=0;i<NUM_PAWNS;i++)
-       {
-        color_hidden[i]=colors[i];
-       }
-
-    }
-     void game()
-     {
-       color_t color_hidden[NUM_PAWNS];
-     color_t color_proposed[NUM_PAWNS];
-      generate_hidden_combination(color_hidden);
-      int well_placed_pawn,misplaced_pawn;
-      for(int i=0;i<NUM_ATTEMPTS;i++)
-      {
-       printf("attempt %d:",i+1);
-       read_proposed_combinations(color_proposed);
-       evaluate_proposed_combinations(color_hidden,color_proposed,
-       &well_placed_pawn,&misplaced_pawn);
-       printf("well placed pawn:%d   misplaced pawn:%d \n",well_placed_pawn,misplaced_pawn);
-       if (well_placed_pawn==NUM_PAWNS)
-       {
-        printf("congratulation you win");
-       }
-
-      }
-
-     }
-    int main() {
-    printf("RED=1, GREEN=2, BLUE=3, YELLOW=4, BLACK=5, WHITE=6, GRAY=7, PURPLE=8 \n");
-    game();
-    return 0;
+    return node;
 }
 
+void insert_word(TrieNode *root, const char *word) {
+    TrieNode *current = root;
+    for (int level = 0; level < strlen(word); level++) {
+        int index = tolower(word[level]) - 'a';
+        if (!current->children[index]) {
+            current->children[index] = create_node();
+        }
+        current = current->children[index];
+    }
+    current->is_end_of_word = 1;
+}
 
+int search_word(TrieNode *root, const char *word) {
+    TrieNode *current = root;
+    for (int level = 0; level < strlen(word); level++) {
+        int index = tolower(word[level]) - 'a';
+        if (!current->children[index]) {
+            return 0;
+        }
+        current = current->children[index];
+    }
+    return current != NULL && current->is_end_of_word;
+}
+
+int get_word_length(const char *word) {
+    int length = 0;
+    while (word[length] != '\0') {
+        length++;
+    }
+    return length;
+}
+
+void free_trie(TrieNode *root) {
+    for (int i = 0; i < 26; i++) {
+        if (root->children[i]) {
+            free_trie(root->children[i]);
+        }
+    }
+    free(root);
+}
+
+int main() {
+    TrieNode *root = create_node();
+
+    // Load dictionary
+    FILE *dictionary_file = fopen("dictionary.txt", "r");
+    if (!dictionary_file) {
+        printf("Error: Unable to open dictionary file.\n");
+        return 1;
+    }
+    char word[MAX_WORD_LENGTH];
+    while (fscanf(dictionary_file, "%s", word) != EOF) {
+        insert_word(root, word);
+    }
+    fclose(dictionary_file);
+
+
+    // Play the game
+    char drawn_letters[10];
+    printf("Enter 10 letters: ");
+    scanf("%s", drawn_letters);
+
+    int max_word_length = 0;
+    int max_word_length_count = 0;
+    for (int length = 10; length >= 2; length--) {
+        for (int i = 0; i <= 10 - length; i++) {
+            char substring[MAX_WORD_LENGTH];
+            strncpy(substring, drawn_letters + i, length);
+            substring[length] = '\0';
+
+            if (search_word(root, substring)) {
+                int word_length = get_word_length(substring);
+                if (word_length > max_word_length) {
+                    max_word_length = word_length;
+                    max_word_length_count = 1;
+                } else if (word_length == max_word_length) {
+                    max_word_length_count++;
+                }
+            }
+        }
+    }
+
+    printf("Maximum word length: %d\n", max_word_length);
+    printf("Number of %d-letter words: %d\n", max_word_length, max_word_length_count);
+
+    free_trie(root);
+
+    return 0;
+}
